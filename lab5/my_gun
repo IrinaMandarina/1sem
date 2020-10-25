@@ -1,0 +1,166 @@
+import pygame
+from pygame.draw import *
+from numpy import arctan, pi
+from random import randint
+
+pygame.init()
+
+FPS = 20
+screen = pygame.display.set_mode((600, 800))
+screen.fill((255, 255, 255))
+
+
+def rotate(img, pos, angle):
+    w, h = img.get_size()
+    img2 = pygame.Surface((w * 2, h * 2), pygame.SRCALPHA)
+    img2.blit(img, (w - pos[0], h - pos[1]))
+    return pygame.transform.rotate(img2, angle)
+
+
+class Ball():
+    def __init__(self, x, y, r, color, dx, dy, screen, hit=False):
+        self.x = x
+        self.y = y
+        self.r = r
+        self.dx = dx
+        self.dy = dy
+        self.color = color
+        self.screen = screen
+        self.hit = hit
+        self.lifetime = 150
+
+    def draw(self):
+        """
+        Function draws a usual ball. It costs 1 coin.
+        """
+        circle(self.screen, self.color, (self.x, self.y), self.r)
+
+    def move(self):
+        self.x += self.dx
+        self.y += self.dy
+        self.dy += 1
+        # conditions of reflection from the walls
+        if (self.x + self.r > 600) or (self.x - self.r < 0):
+            self.dx *= -1
+        if (self.y + self.r > 800) or (self.y - self.r < 0):
+            self.dy *= -1
+
+    def hittest(self, obj):
+        # FIXME
+        return False
+
+
+class Target(Ball):
+    def __init__(self, x, y, r, color, dx, dy, screen, hit):
+        super().__init__(x, y, r, color, dx, dy, screen, hit)
+        self.lifetime = 50
+
+
+class Gun():
+
+    def __init__(self, screen):
+        self.screen = screen
+
+    def draw_gun(self, x_m, y_m, dl=0):
+        screen_gun = pygame.Surface((100 + dl, 40))
+        screen_gun.fill((0, 0, 0))
+        screen_gun.set_colorkey((0, 0, 0))
+        rect(screen_gun, (255, 0, 0), (0, 0, 100 + dl, 20))
+        angle = arctan((400 - y_m) / (x_m - 5)) * 180 / pi
+        screen_gun = rotate(screen_gun, (0, 10), angle)
+        rect1 = screen_gun.get_rect()
+        rect1.center = 5, 400
+        self.screen.blit(screen_gun, rect1)
+
+    def shoot(self, x_m, y_m, dl):
+        x_b = 5 + int((100 + dl) * (x_m - 5) / ((x_m - 5) ** 2 + (400 - y_m) ** 2) ** 0.5)
+        y_b = 400 - int((100 + dl) * (400 - y_m) / ((x_m - 5) ** 2 + (400 - y_m) ** 2) ** 0.5)
+        dy_b = int((5 + (20 * (-400 + y_m) / ((x_m - 25) ** 2 + (400 - y_m) ** 2) ** 0.5)) * (1 + dl / 80))
+        dx_b = int((5 + (20 * (x_m - 5) / ((x_m - 5) ** 2 + (400 - y_m) ** 2) ** 0.5)) * (1 + dl / 80))
+        return Target(x_b, y_b, 20, (0, 255, 0), dx_b, dy_b, self.screen, hit=False)
+
+
+gun = Gun(screen)
+dl = 0
+boo = False
+shell = 0
+k = 0
+balls = []
+timer = 0
+
+pygame.display.update()
+clock = pygame.time.Clock()
+finished = False
+
+while not finished:
+    clock.tick(FPS)
+    screen.fill((255, 255, 255))
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            finished = True
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            boo = pygame.mouse.get_pressed()[0]
+        if event.type == pygame.MOUSEBUTTONUP:
+            boo = pygame.mouse.get_pressed()[0]
+            (x_m, y_m) = pygame.mouse.get_pos()
+            shell = gun.shoot(x_m, y_m, dl)
+            dl = 0
+
+    if shell != 0 and shell.lifetime > 0 and not shell.hit:
+        shell.draw()
+        shell.move()
+        shell.lifetime -= 1
+    else:
+        shell = 0
+
+    if boo:
+        dl += 2
+        (x_m, y_m) = pygame.mouse.get_pos()
+        gun.draw_gun(x_m, y_m, dl)
+
+    if pygame.mouse.get_focused():
+        (x_m, y_m) = pygame.mouse.get_pos()
+        gun.draw_gun(x_m, y_m, dl)
+
+    if (timer % 30 == 0) and (len(balls) < 3):
+        r = randint(10, 50)
+        x = randint(350, 550)
+        y = randint(50, 750)
+        dx = randint(-5, 5)
+        dy = randint(-5, 5)
+        lifetime = 100
+        color = (randint(0, 255), randint(0, 255), randint(0, 255))
+        ball = Ball(x, y, r, color, dx, dy, screen)
+        balls.append(ball)
+        ball.draw()
+
+    for ball in balls:
+        ball.move()
+        # condition for disappearing if the ball is old
+        if ball.lifetime > 0 and not ball.hit:
+            ball.draw()
+            ball.lifetime -= 1
+        else:
+            balls.remove(ball)
+
+    flag = False
+    if shell != 0:
+        for ball in balls:
+            if (ball.x - shell.x) ** 2 + (ball.y - shell.y) ** 2 <= (ball.r + 20) ** 2:
+                k += 1
+                balls.remove(ball)
+                flag = True
+    if flag:
+        shell = 0
+
+    # output of the score on the game display
+    f = pygame.font.Font(None, 36)
+    text = f.render('Score:' + str(k), 1, (180, 0, 0))
+    screen.blit(text, (250, 20))
+
+    timer += 1
+
+    pygame.display.update()
+
+pygame.quit()
