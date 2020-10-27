@@ -3,11 +3,32 @@ from pygame.draw import *
 from numpy import arctan, pi
 from random import randint
 
+gamer_name = input('What is your name?')
+
 pygame.init()
 
 FPS = 20
 screen = pygame.display.set_mode((600, 800))
 screen.fill((255, 255, 255))
+
+
+def record(file_name):
+    new_gamer = [gamer_name, k]
+    gamers = []  # list of gamers and their scores
+
+    # building of the list of gamers
+    with open(file_name, 'r+') as file:
+        for s in file:  # reading from the file
+            gamers.append(s.split())
+        gamers.append(new_gamer)
+        for gamer in gamers:
+            gamer[1] = int(gamer[1])
+        gamers = sorted(gamers, key=lambda gamer: gamer[1], reverse=True)  # sorting of records
+        file.seek(0)  # clearing of the file
+        file.truncate()
+        for gamer in gamers:
+            gamer = str(gamer[0]) + ' ' + str(gamer[1]) + '\n'
+            file.write(gamer)  # rewriting of the file
 
 
 def rotate(img, pos, angle):
@@ -36,18 +57,16 @@ class Ball():
         circle(self.screen, self.color, (self.x, self.y), self.r)
 
     def move(self):
+        x_next = self.x + self.dx
+        y_next = self.y + self.dy
+        # conditions of reflection from the walls
+        if (600 < self.x + self.r < x_next + self.r) or (0 > self.x - self.r > x_next - self.r):
+            self.dx *= -1
+        if (800 < self.y + self.r < y_next + self.r) or (0 > self.y - self.r > y_next - self.r):
+            self.dy *= -1
         self.x += self.dx
         self.y += self.dy
         self.dy += 1
-        # conditions of reflection from the walls
-        if (self.x + self.r > 600) or (self.x - self.r < 0):
-            self.dx *= -1
-        if (self.y + self.r > 800) or (self.y - self.r < 0):
-            self.dy *= -1
-
-    def hittest(self, obj):
-        # FIXME
-        return False
 
 
 class Target(Ball):
@@ -80,13 +99,43 @@ class Gun():
         return Target(x_b, y_b, 20, (0, 255, 0), dx_b, dy_b, self.screen, hit=False)
 
 
+class Button():
+    def __init__(self, screen, x, y, color, name):
+        self.screen = screen
+        self.x = x
+        self.y = y
+        self.name = name
+        f = pygame.font.Font(None, 36)
+        self.w_x, self.w_y = f.size(self.name)
+        self.color = color
+        self.click = False
+
+    def draw(self):
+        rect(self.screen, self.color, (self.x, self.y, self.w_x + 10, self.w_y + 10))
+        f = pygame.font.Font(None, 36)
+        text = f.render(self.name, 1, (0, 0, 0))
+        self.screen.blit(text, (self.x + 5, self.y + 5))
+
+    def hitting(self, x_m, y_m):
+        if self.x <= x_m <= self.x + self.w_x + 10 and self.y <= y_m <= self.y + self.w_y + 10:
+            self.click = True
+
+    def check(self, x_m, y_m):
+        if self.x <= x_m <= self.x + self.w_x + 10 and self.y <= y_m <= self.y + self.w_y + 10:
+            return True
+        else:
+            return False
+
+
 gun = Gun(screen)
 dl = 0
 boo = False
-shell = 0
+shells = []
 k = 0
 balls = []
 timer = 0
+restart = Button(screen, 5, 5, (255, 128, 0), 'Restart')
+record_file = 'rating.txt'
 
 pygame.display.update()
 clock = pygame.time.Clock()
@@ -101,18 +150,23 @@ while not finished:
             finished = True
         if event.type == pygame.MOUSEBUTTONDOWN:
             boo = pygame.mouse.get_pressed()[0]
+            (x_m, y_m) = pygame.mouse.get_pos()
+            restart.hitting(x_m, y_m)
         if event.type == pygame.MOUSEBUTTONUP:
             boo = pygame.mouse.get_pressed()[0]
             (x_m, y_m) = pygame.mouse.get_pos()
-            shell = gun.shoot(x_m, y_m, dl)
+            if not restart.check(x_m, y_m):
+                shell = gun.shoot(x_m, y_m, dl)
+                shells.append(shell)
             dl = 0
 
-    if shell != 0 and shell.lifetime > 0 and not shell.hit:
-        shell.draw()
-        shell.move()
-        shell.lifetime -= 1
-    else:
-        shell = 0
+    for shell in shells:
+        if shell.lifetime > 0 and not shell.hit:
+            shell.draw()
+            shell.move()
+            shell.lifetime -= 1
+        else:
+            shells.remove(shell)
 
     if boo:
         dl += 2
@@ -124,7 +178,7 @@ while not finished:
         gun.draw_gun(x_m, y_m, dl)
 
     if (timer % 30 == 0) and (len(balls) < 3):
-        r = randint(10, 50)
+        r = randint(20, 50)
         x = randint(350, 550)
         y = randint(50, 750)
         dx = randint(-5, 5)
@@ -135,6 +189,20 @@ while not finished:
         balls.append(ball)
         ball.draw()
 
+    for i in range(len(balls)):  # interaction of the balls
+        for j in range(i + 1, len(balls)):
+            x_next1 = balls[i].dx + balls[i].x
+            x_next2 = balls[j].dx + balls[j].x
+            y_next1 = balls[i].dy + balls[i].y
+            y_next2 = balls[j].dy + balls[j].y
+            if ((balls[i].x - balls[j].x) ** 2 + (balls[i].y - balls[j].y) ** 2 <= (balls[i].r + balls[j].r) ** 2) and \
+                    ((balls[i].x - balls[j].x) ** 2 + (balls[i].y - balls[j].y) ** 2 > (x_next1 - x_next2) ** 2 + (
+                            y_next1 - y_next2) ** 2):
+                balls[i].dx *= (-1)
+                balls[j].dx *= (-1)
+                balls[i].dy *= (-1)
+                balls[j].dy *= (-1)
+
     for ball in balls:
         ball.move()
         # condition for disappearing if the ball is old
@@ -144,15 +212,12 @@ while not finished:
         else:
             balls.remove(ball)
 
-    flag = False
-    if shell != 0:
+    for shell in shells:
         for ball in balls:
             if (ball.x - shell.x) ** 2 + (ball.y - shell.y) ** 2 <= (ball.r + 20) ** 2:
                 k += 1
                 balls.remove(ball)
-                flag = True
-    if flag:
-        shell = 0
+                shells.remove(shell)
 
     # output of the score on the game display
     f = pygame.font.Font(None, 36)
@@ -161,6 +226,16 @@ while not finished:
 
     timer += 1
 
+    restart.draw()
+    if restart.click:
+        restart.color = (randint(100, 255), randint(100, 255), randint(100, 255))
+        timer = 0
+        k = 0
+        restart.click = False
+        record(record_file)
+
     pygame.display.update()
 
 pygame.quit()
+
+record(record_file)
